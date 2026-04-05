@@ -16,19 +16,34 @@ class ArbitrageStrategy {
   async addToken(tokenAddress) {
     const result = await scanPoolsForToken(this.chainKey, tokenAddress);
     
-    if (result.pools.length < 2) {
-      return { success: false, message: `Only ${result.pools.length} pool(s) found. Need at least 2 for arbitrage.` };
-    }
-
+    // Always track the token (for list/monitoring), even with 0-1 pools
     this.tokens.set(tokenAddress.toLowerCase(), {
       symbol: result.tokenSymbol,
       decimals: result.tokenDecimals,
       pools: result.pools,
+      canArbitrage: result.pools.length >= 2,
     });
+
+    if (result.pools.length === 0) {
+      return { 
+        success: true, 
+        tracked: true,
+        message: `Added ${result.tokenSymbol} — ⚠️ No pools found on this chain. Token tracked for sandwich/copytrade only.` 
+      };
+    }
+
+    if (result.pools.length === 1) {
+      return { 
+        success: true, 
+        tracked: true,
+        message: `Added ${result.tokenSymbol} — 1 pool found: ${result.pools[0].dex} (${result.pools[0].liquidityETH.toFixed(4)} ETH liq). Need 2+ pools for arbitrage, but tracked for sandwich/copytrade.` 
+      };
+    }
 
     return {
       success: true,
-      message: `Added ${result.tokenSymbol} with ${result.pools.length} pools: ${result.pools.map(p => p.dex).join(", ")}`,
+      tracked: true,
+      message: `Added ${result.tokenSymbol} with ${result.pools.length} pools: ${result.pools.map(p => `${p.dex} (${p.liquidityETH.toFixed(4)} ETH)`).join(", ")}. Arbitrage active! ✅`,
     };
   }
 
@@ -43,6 +58,7 @@ class ArbitrageStrategy {
         address: addr,
         symbol: data.symbol,
         poolCount: data.pools.length,
+        canArbitrage: data.canArbitrage || false,
         pools: data.pools.map(p => `${p.dex} (${p.liquidityETH.toFixed(4)} ETH liq)`),
       });
     }

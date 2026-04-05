@@ -185,9 +185,11 @@ class TelegramBot {
         ctx.reply("No tokens being monitored. Use /add <address>");
         return;
       }
-      const list = tokens.map((t, i) =>
-        `${i + 1}. ${t.symbol} (${t.address.slice(0, 10)}...)\n   Pools: ${t.poolCount} — ${t.pools.join(", ")}`
-      ).join("\n\n");
+      const list = tokens.map((t, i) => {
+        const status = t.canArbitrage ? "✅ Arbit active" : "👀 Monitor only";
+        const poolInfo = t.pools.length > 0 ? t.pools.join(", ") : "No pools";
+        return `${i + 1}. ${t.symbol} ${status}\n   ${t.address}\n   Pools (${t.poolCount}): ${poolInfo}`;
+      }).join("\n\n");
       ctx.reply(`📋 Monitored Tokens:\n\n${list}`);
     });
 
