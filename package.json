@@ -1,0 +1,26 @@
+{
+  "name": "mev-bot",
+  "version": "1.0.0",
+  "description": "Multi-chain MEV Bot - Sandwich, Arbitrage, Copy-trade",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "compile": "npx hardhat compile",
+    "deploy:base": "npx hardhat run scripts/deploy.js --network base",
+    "deploy:bsc": "npx hardhat run scripts/deploy.js --network bsc",
+    "verify:base": "npx hardhat verify --network base",
+    "verify:bsc": "npx hardhat verify --network bsc"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.4.0",
+    "ethers": "^6.13.0",
+    "telegraf": "^4.16.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "hardhat": "^2.22.0"
+  }
+}
