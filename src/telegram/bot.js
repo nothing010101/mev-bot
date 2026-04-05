@@ -461,8 +461,24 @@ class TelegramBot {
       { command: "ping", description: "🏓 Check if bot is alive" },
     ]);
 
-    await this.bot.launch();
-    console.log("🤖 Telegram bot started (menu commands registered)");
+    // Retry launch with delay (handles 409 conflict during Railway zero-downtime deploy)
+    const maxRetries = 5;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Drop pending updates to avoid conflict
+        await this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        await this.bot.launch({ dropPendingUpdates: true });
+        console.log("🤖 Telegram bot started (menu commands registered)");
+        break;
+      } catch (e) {
+        if (e.message && e.message.includes("409") && attempt < maxRetries) {
+          console.log(`⏳ Telegram conflict (old instance still running), retry ${attempt}/${maxRetries} in ${attempt * 3}s...`);
+          await new Promise((r) => setTimeout(r, attempt * 3000));
+        } else {
+          throw e;
+        }
+      }
+    }
 
     if (this.chatId) {
       await this.notify("🟢 MEV Bot is online!");
