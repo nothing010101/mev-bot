@@ -26,6 +26,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Persistent data (runtime state)
+data/
+
 # Logs
 logs/
 *.log

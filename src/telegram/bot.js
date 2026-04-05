@@ -5,11 +5,12 @@ const { getBalance, getContractBalance, getContract, getWallet } = require("../u
 const { scanPoolsForToken, checkHoneypot } = require("../utils/poolScanner");
 
 class TelegramBot {
-  constructor(strategies, settings) {
+  constructor(strategies, settings, persistence = {}) {
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
     this.chatId = process.env.TELEGRAM_CHAT_ID;
-    this.strategies = strategies; // { arbitrage, copytrade, sandwich }
+    this.strategies = strategies;
     this.settings = settings;
+    this.persistence = persistence; // { persistToken, removePersistedToken, persistWallet, removePersistedWallet }
     this.authorized = new Set();
     
     if (this.chatId) {
@@ -154,6 +155,11 @@ class TelegramBot {
       if (this.strategies.sandwich) {
         this.strategies.sandwich.addToken(address);
       }
+
+      // Persist to disk
+      if (this.persistence.persistToken) {
+        this.persistence.persistToken(address, this.settings.activeChain);
+      }
     });
 
     this.bot.command("remove", (ctx) => {
@@ -166,6 +172,9 @@ class TelegramBot {
       
       if (this.strategies.arbitrage) this.strategies.arbitrage.removeToken(address);
       if (this.strategies.sandwich) this.strategies.sandwich.removeToken(address);
+      if (this.persistence.removePersistedToken) {
+        this.persistence.removePersistedToken(address, this.settings.activeChain);
+      }
       
       ctx.reply(`✅ Removed ${address.slice(0, 10)}...`);
     });
@@ -221,6 +230,9 @@ class TelegramBot {
       if (this.strategies.sandwich) {
         this.strategies.sandwich.addTargetWallet(address);
       }
+      if (this.persistence.persistWallet) {
+        this.persistence.persistWallet(address, label, this.settings.activeChain);
+      }
 
       ctx.reply(`✅ Watching ${label || address.slice(0, 10)}...`);
     });
@@ -234,6 +246,9 @@ class TelegramBot {
 
       if (this.strategies.copytrade) this.strategies.copytrade.removeWallet(args[1]);
       if (this.strategies.sandwich) this.strategies.sandwich.removeTargetWallet(args[1]);
+      if (this.persistence.removePersistedWallet) {
+        this.persistence.removePersistedWallet(args[1], this.settings.activeChain);
+      }
 
       ctx.reply(`✅ Stopped watching ${args[1].slice(0, 10)}...`);
     });
