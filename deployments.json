@@ -1,9 +1,23 @@
 {
+  "56": {
+    "contract": "0x15D29431D20C25Ad28d1413afFf7bd498998C047",
+    "deployer": "0xBa5EdAF58A91da4948C504A6c2e85a48DE3cB04B",
+    "weth": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    "routers": [
+      "pancakeswap_v2",
+      "biswap"
+    ],
+    "timestamp": "2026-04-05T22:48:18.959Z"
+  },
   "8453": {
     "contract": "0x3a4a07993635C8F0Cdea733678f82356cA4b1FCF",
     "deployer": "0xBa5EdAF58A91da4948C504A6c2e85a48DE3cB04B",
     "weth": "0x4200000000000000000000000000000000000006",
-    "routers": ["aerodrome", "uniswap_v2", "sushiswap"],
+    "routers": [
+      "aerodrome",
+      "uniswap_v2",
+      "sushiswap"
+    ],
     "timestamp": "2026-04-05T22:46:00Z"
   }
 }
