@@ -1,4 +1,5 @@
 require("dotenv").config();
+const http = require("http");
 
 const { DEFAULT_SETTINGS, CHAINS } = require("./config");
 const ArbitrageStrategy = require("./strategies/arbitrage");
@@ -90,6 +91,29 @@ async function main() {
   console.log(`\n✅ MEV Bot running on ${CHAINS[settings.activeChain].name}`);
   console.log(`Strategies: ${CHAINS[settings.activeChain].strategies.join(", ")}`);
   console.log("Waiting for Telegram commands...\n");
+
+  // HTTP healthcheck server (keeps Railway happy)
+  const PORT = process.env.PORT || 3000;
+  const server = http.createServer((req, res) => {
+    if (req.url === "/health" || req.url === "/") {
+      const uptime = process.uptime();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        status: "ok",
+        uptime: Math.floor(uptime),
+        chain: settings.activeChain,
+        paused: settings.paused,
+        tokens: strategies.arbitrage?.getTokens()?.length || 0,
+        wallets: strategies.copytrade?.getWallets()?.length || 0,
+      }));
+    } else {
+      res.writeHead(404);
+      res.end("Not found");
+    }
+  });
+  server.listen(PORT, () => {
+    console.log(`🌐 Healthcheck server on port ${PORT}`);
+  });
 
   // Graceful shutdown
   const shutdown = () => {

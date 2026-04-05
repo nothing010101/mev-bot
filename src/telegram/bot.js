@@ -367,6 +367,25 @@ class TelegramBot {
       // TODO: Implement trade history from events
       ctx.reply("📜 Trade history coming soon. Check explorer for now.");
     });
+
+    // ============ HEALTH ============
+    this.bot.command("ping", (ctx) => {
+      const uptime = process.uptime();
+      const hours = Math.floor(uptime / 3600);
+      const mins = Math.floor((uptime % 3600) / 60);
+      const secs = Math.floor(uptime % 60);
+      const mem = process.memoryUsage();
+      
+      ctx.reply(
+        `🏓 Pong!\n\n` +
+        `⏱ Uptime: ${hours}h ${mins}m ${secs}s\n` +
+        `💾 Memory: ${(mem.heapUsed / 1024 / 1024).toFixed(1)} MB\n` +
+        `🔗 Chain: ${CHAINS[this.settings.activeChain]?.name}\n` +
+        `⏸ Paused: ${this.settings.paused ? "Yes" : "No"}\n` +
+        `📋 Tokens: ${this.strategies.arbitrage?.getTokens()?.length || 0}\n` +
+        `👀 Wallets: ${this.strategies.copytrade?.getWallets()?.length || 0}`
+      );
+    });
   }
 
   async notify(message) {
@@ -380,8 +399,33 @@ class TelegramBot {
   }
 
   async start() {
+    // Set menu commands (hamburger button)
+    await this.bot.telegram.setMyCommands([
+      { command: "start", description: "📋 Show all commands" },
+      { command: "status", description: "📊 Bot status & balances" },
+      { command: "chain", description: "🔗 Switch chain (base/bsc/ethereum)" },
+      { command: "add", description: "➕ Add token to monitor" },
+      { command: "remove", description: "➖ Remove token" },
+      { command: "list", description: "📋 List monitored tokens" },
+      { command: "pools", description: "🏊 Show pools for token" },
+      { command: "watch", description: "👀 Watch wallet address" },
+      { command: "unwatch", description: "🚫 Stop watching wallet" },
+      { command: "wallets", description: "👥 List watched wallets" },
+      { command: "setamount", description: "💰 Set trade amount" },
+      { command: "setmin", description: "📉 Set min profit threshold" },
+      { command: "setslippage", description: "📐 Set max slippage %" },
+      { command: "flashloan", description: "⚡ Toggle flash loan on/off" },
+      { command: "fund", description: "📤 Send ETH/BNB to contract" },
+      { command: "withdraw", description: "📥 Withdraw all from contract" },
+      { command: "pause", description: "⏸ Pause trading" },
+      { command: "resume", description: "▶️ Resume trading" },
+      { command: "profits", description: "💵 Profit summary" },
+      { command: "history", description: "📜 Recent trades" },
+      { command: "ping", description: "🏓 Check if bot is alive" },
+    ]);
+
     await this.bot.launch();
-    console.log("🤖 Telegram bot started");
+    console.log("🤖 Telegram bot started (menu commands registered)");
 
     if (this.chatId) {
       await this.notify("🟢 MEV Bot is online!");
