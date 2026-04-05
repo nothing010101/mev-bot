@@ -32,7 +32,7 @@ function getContract(chainKey) {
   const chain = CHAINS[chainKey];
   if (!chain.contract) throw new Error(`No contract deployed on ${chainKey}`);
   
-  const abi = require("../../artifacts/contracts/MEVBot.sol/MEVBot.json").abi;
+  const abi = require("../abi/MEVBot.json");
   return new ethers.Contract(chain.contract, abi, getWallet(chainKey));
 }
 

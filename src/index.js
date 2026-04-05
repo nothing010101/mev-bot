@@ -10,6 +10,11 @@ const TelegramBot = require("./telegram/bot");
 
 async function main() {
   console.log("🚀 Starting MEV Bot...");
+  console.log(`Node: ${process.version}`);
+  console.log(`ENV check: DEPLOYER_PRIVATE_KEY=${process.env.DEPLOYER_PRIVATE_KEY ? "✅ set" : "❌ missing"}`);
+  console.log(`ENV check: TELEGRAM_BOT_TOKEN=${process.env.TELEGRAM_BOT_TOKEN ? "✅ set" : "❌ missing"}`);
+  console.log(`ENV check: BASE_CONTRACT_ADDRESS=${process.env.BASE_CONTRACT_ADDRESS || "❌ missing"}`);
+  console.log(`ENV check: BSC_CONTRACT_ADDRESS=${process.env.BSC_CONTRACT_ADDRESS || "❌ missing"}`);
 
   // Load persistent state
   const state = loadState();
