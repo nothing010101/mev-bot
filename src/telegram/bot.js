@@ -462,18 +462,29 @@ class TelegramBot {
     ]);
 
     // Retry launch with delay (handles 409 conflict during Railway zero-downtime deploy)
-    const maxRetries = 5;
+    const maxRetries = 10;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Drop pending updates to avoid conflict
+        // Drop pending updates and kill any existing webhook/polling
         await this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        
+        // Small delay to let Telegram release the lock
+        if (attempt > 1) {
+          const waitSec = Math.min(attempt * 5, 30);
+          console.log(`⏳ Waiting ${waitSec}s before retry ${attempt}/${maxRetries}...`);
+          await new Promise((r) => setTimeout(r, waitSec * 1000));
+        }
+        
         await this.bot.launch({ dropPendingUpdates: true });
         console.log("🤖 Telegram bot started (menu commands registered)");
         break;
       } catch (e) {
         if (e.message && e.message.includes("409") && attempt < maxRetries) {
-          console.log(`⏳ Telegram conflict (old instance still running), retry ${attempt}/${maxRetries} in ${attempt * 3}s...`);
-          await new Promise((r) => setTimeout(r, attempt * 3000));
+          console.log(`⚠️ Telegram 409 conflict — old instance still polling (attempt ${attempt}/${maxRetries})`);
+        } else if (attempt >= maxRetries) {
+          console.error(`❌ Telegram failed after ${maxRetries} retries: ${e.message}`);
+          console.error("Bot will run WITHOUT Telegram. Restart manually to fix.");
+          return; // Don't crash — bot runs without Telegram
         } else {
           throw e;
         }
