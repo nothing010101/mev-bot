@@ -5,6 +5,9 @@ require("@nomicfoundation/hardhat-verify");
 const DEPLOYER_KEY = process.env.DEPLOYER_PRIVATE_KEY || "0".repeat(64);
 
 module.exports = {
+  sourcify: {
+    enabled: true,
+  },
   solidity: {
     version: "0.8.24",
     settings: {
