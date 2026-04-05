@@ -10,15 +10,27 @@ const TelegramBot = require("./telegram/bot");
 
 async function main() {
   console.log("🚀 Starting MEV Bot...");
-  console.log(`Node: ${process.version}`);
-  console.log(`ENV check: DEPLOYER_PRIVATE_KEY=${process.env.DEPLOYER_PRIVATE_KEY ? "✅ set" : "❌ missing"}`);
-  console.log(`ENV check: TELEGRAM_BOT_TOKEN=${process.env.TELEGRAM_BOT_TOKEN ? "✅ set" : "❌ missing"}`);
-  console.log(`ENV check: BASE_CONTRACT_ADDRESS=${process.env.BASE_CONTRACT_ADDRESS || "❌ missing"}`);
-  console.log(`ENV check: BSC_CONTRACT_ADDRESS=${process.env.BSC_CONTRACT_ADDRESS || "❌ missing"}`);
+
+  try {
+    console.log(`Node: ${process.version}`);
+  } catch(e) { console.error("version check failed:", e.message); }
+
+  try {
+    console.log(`ENV check: DEPLOYER_PRIVATE_KEY=${process.env.DEPLOYER_PRIVATE_KEY ? "✅ set" : "❌ missing"}`);
+    console.log(`ENV check: TELEGRAM_BOT_TOKEN=${process.env.TELEGRAM_BOT_TOKEN ? "✅ set" : "❌ missing"}`);
+    console.log(`ENV check: BASE_CONTRACT_ADDRESS=${process.env.BASE_CONTRACT_ADDRESS || "❌ missing"}`);
+    console.log(`ENV check: BSC_CONTRACT_ADDRESS=${process.env.BSC_CONTRACT_ADDRESS || "❌ missing"}`);
+  } catch(e) { console.error("env check failed:", e.message); }
 
   // Load persistent state
-  const state = loadState();
-  console.log(`📂 Loaded state: ${state.tokens.length} tokens, ${state.wallets.length} wallets`);
+  let state;
+  try {
+    state = loadState();
+    console.log(`📂 Loaded state: ${state.tokens.length} tokens, ${state.wallets.length} wallets`);
+  } catch(e) {
+    console.error("❌ Failed to load state:", e.message);
+    state = { tokens: [], wallets: [], settings: {} };
+  }
 
   // Runtime settings (from persistent state)
   const settings = { ...DEFAULT_SETTINGS, ...state.settings };
@@ -147,13 +159,20 @@ async function main() {
   };
 
   // Start Telegram bot with persistence hooks
-  const telegram = new TelegramBot(strategies, settingsProxy, {
-    persistToken,
-    removePersistedToken,
-    persistWallet,
-    removePersistedWallet,
-  });
-  telegramNotify = (msg) => telegram.notify(msg);
+  let telegram;
+  try {
+    telegram = new TelegramBot(strategies, settingsProxy, {
+      persistToken,
+      removePersistedToken,
+      persistWallet,
+      removePersistedWallet,
+    });
+    telegramNotify = (msg) => telegram.notify(msg);
+    console.log("📱 Telegram bot created");
+  } catch(e) {
+    console.error("❌ Failed to create Telegram bot:", e.message, e.stack);
+    throw e;
+  }
 
   // Update notify reference in strategies
   const updateNotify = () => {
@@ -162,11 +181,22 @@ async function main() {
     if (strategies.sandwich) strategies.sandwich.notify = telegramNotify;
   };
 
-  await telegram.start();
+  try {
+    await telegram.start();
+    console.log("📱 Telegram bot started");
+  } catch(e) {
+    console.error("❌ Telegram bot start failed:", e.message, e.stack);
+    throw e;
+  }
 
   // Initialize strategies for default chain
-  await initStrategies(settingsProxy.activeChain);
-  updateNotify();
+  try {
+    await initStrategies(settingsProxy.activeChain);
+    updateNotify();
+    console.log("✅ Strategies initialized");
+  } catch(e) {
+    console.error("❌ Strategy init failed:", e.message, e.stack);
+  }
 
   // Watch for chain switches
   let currentChain = settingsProxy.activeChain;
