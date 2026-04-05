@@ -4,7 +4,6 @@ const { getProvider } = require("./provider");
 
 const FACTORY_ABI = [
   "function getPair(address tokenA, address tokenB) view returns (address pair)",
-  "function allPairsLength() view returns (uint256)",
 ];
 
 const PAIR_ABI = [
@@ -24,6 +23,16 @@ const ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn, address[] calldata path) view returns (uint256[] memory amounts)",
 ];
 
+// Helper: promise with timeout
+function withTimeout(promise, ms, label = "Operation") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 /**
  * Scan all known DEXes for pools containing the given token
  */
@@ -32,61 +41,81 @@ async function scanPoolsForToken(chainKey, tokenAddress) {
   const chain = CHAINS[chainKey];
   const dexes = DEX_CONFIGS[chainKey] || [];
   const pools = [];
+  const errors = [];
 
-  // Get token info
-  const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-  let tokenSymbol, tokenDecimals;
+  console.log(`[Scanner] Scanning ${dexes.length} DEXes for ${tokenAddress} on ${chainKey}`);
+
+  // Get token info with timeout
+  let tokenSymbol = "UNKNOWN";
+  let tokenDecimals = 18;
   try {
-    [tokenSymbol, tokenDecimals] = await Promise.all([
-      tokenContract.symbol(),
-      tokenContract.decimals(),
-    ]);
+    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+    const [sym, dec] = await withTimeout(
+      Promise.all([tokenContract.symbol(), tokenContract.decimals()]),
+      10000,
+      "Token info"
+    );
+    tokenSymbol = sym;
+    tokenDecimals = Number(dec);
+    console.log(`[Scanner] Token: ${tokenSymbol} (${tokenDecimals} decimals)`);
   } catch (e) {
-    tokenSymbol = "UNKNOWN";
-    tokenDecimals = 18;
+    console.error(`[Scanner] Failed to get token info: ${e.message}`);
+    errors.push(`Token info: ${e.message}`);
   }
 
+  // Scan each DEX with timeout
   for (const dex of dexes) {
     try {
+      console.log(`[Scanner] Checking ${dex.name}...`);
       const factory = new ethers.Contract(dex.factory, FACTORY_ABI, provider);
-      
-      // Check pair with WETH/WBNB
-      const pairAddress = await factory.getPair(tokenAddress, chain.weth);
-      
-      if (pairAddress && pairAddress !== ethers.ZeroAddress) {
-        const pair = new ethers.Contract(pairAddress, PAIR_ABI, provider);
-        const [reserves, token0] = await Promise.all([
-          pair.getReserves(),
-          pair.token0(),
-        ]);
 
-        const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
-        const tokenReserve = isToken0 ? reserves[0] : reserves[1];
-        const wethReserve = isToken0 ? reserves[1] : reserves[0];
+      const pairAddress = await withTimeout(
+        factory.getPair(tokenAddress, chain.weth),
+        10000,
+        `${dex.name} getPair`
+      );
 
-        const liquidityETH = parseFloat(ethers.formatEther(wethReserve));
-
-        pools.push({
-          dex: dex.name,
-          router: dex.router,
-          factory: dex.factory,
-          pair: pairAddress,
-          token: tokenAddress,
-          tokenSymbol,
-          tokenDecimals: Number(tokenDecimals),
-          liquidityETH,
-          tokenReserve: tokenReserve.toString(),
-          wethReserve: wethReserve.toString(),
-          type: dex.type,
-        });
+      if (!pairAddress || pairAddress === ethers.ZeroAddress) {
+        console.log(`[Scanner] ${dex.name}: no pair found`);
+        continue;
       }
+
+      const pair = new ethers.Contract(pairAddress, PAIR_ABI, provider);
+      const [reserves, token0] = await withTimeout(
+        Promise.all([pair.getReserves(), pair.token0()]),
+        10000,
+        `${dex.name} reserves`
+      );
+
+      const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+      const tokenReserve = isToken0 ? reserves[0] : reserves[1];
+      const wethReserve = isToken0 ? reserves[1] : reserves[0];
+      const liquidityETH = parseFloat(ethers.formatEther(wethReserve));
+
+      console.log(`[Scanner] ${dex.name}: ✅ pair found, ${liquidityETH.toFixed(4)} ETH liquidity`);
+
+      pools.push({
+        dex: dex.name,
+        router: dex.router,
+        factory: dex.factory,
+        pair: pairAddress,
+        token: tokenAddress,
+        tokenSymbol,
+        tokenDecimals,
+        liquidityETH,
+        tokenReserve: tokenReserve.toString(),
+        wethReserve: wethReserve.toString(),
+        type: dex.type,
+      });
     } catch (e) {
-      // Skip failed DEX
-      console.error(`Error scanning ${dex.name}: ${e.message}`);
+      console.error(`[Scanner] ${dex.name}: ❌ ${e.message}`);
+      errors.push(`${dex.name}: ${e.message}`);
     }
   }
 
-  return { tokenSymbol, tokenDecimals: Number(tokenDecimals), pools };
+  console.log(`[Scanner] Done: ${pools.length} pools found, ${errors.length} errors`);
+
+  return { tokenSymbol, tokenDecimals, pools, errors };
 }
 
 /**
@@ -103,13 +132,17 @@ async function getQuotes(chainKey, tokenAddress, amountInETH) {
     try {
       const router = new ethers.Contract(dex.router, ROUTER_ABI, provider);
       const path = [chain.weth, tokenAddress];
-      const amounts = await router.getAmountsOut(amountIn, path);
-      
+      const amounts = await withTimeout(
+        router.getAmountsOut(amountIn, path),
+        10000,
+        `${dex.name} quote`
+      );
+
       quotes.push({
         dex: dex.name,
         router: dex.router,
         amountOut: amounts[1].toString(),
-        amountOutFormatted: ethers.formatUnits(amounts[1], 18), // adjust decimals as needed
+        amountOutFormatted: ethers.formatUnits(amounts[1], 18),
       });
     } catch (e) {
       // Skip if no liquidity or error
@@ -127,27 +160,28 @@ async function checkHoneypot(chainKey, tokenAddress) {
   const warnings = [];
 
   try {
-    const token = new ethers.Contract(tokenAddress, [
-      ...ERC20_ABI,
-      "function owner() view returns (address)",
-      "function getOwner() view returns (address)",
-    ], provider);
+    const token = new ethers.Contract(
+      tokenAddress,
+      [
+        ...ERC20_ABI,
+        "function owner() view returns (address)",
+        "function getOwner() view returns (address)",
+      ],
+      provider
+    );
 
-    const totalSupply = await token.totalSupply();
-    
-    // Check if total supply is suspiciously low
+    const totalSupply = await withTimeout(token.totalSupply(), 10000, "totalSupply");
+
     if (totalSupply === 0n) {
       warnings.push("Total supply is 0");
     }
 
-    // Try to check if token has owner functions (centralization risk)
     try {
-      const owner = await token.owner();
+      const owner = await withTimeout(token.owner(), 5000, "owner");
       if (owner !== ethers.ZeroAddress) {
         warnings.push(`Token has owner: ${owner}`);
       }
     } catch {}
-
   } catch (e) {
     warnings.push(`Cannot read token contract: ${e.message}`);
   }

@@ -131,34 +131,54 @@ class TelegramBot {
         ctx.reply("Usage: /add <token_address>");
         return;
       }
-      const address = args[1];
+      const address = args[1].trim();
       if (!ethers.isAddress(address)) {
         ctx.reply("❌ Invalid address");
         return;
       }
 
-      ctx.reply("🔍 Scanning pools...");
+      const chain = this.settings.activeChain;
+      await ctx.reply(`🔍 Scanning pools on ${chain}... (max 30s)`);
 
-      // Check honeypot
-      const hp = await checkHoneypot(this.settings.activeChain, address);
-      if (!hp.safe) {
-        ctx.reply(`⚠️ Warnings:\n${hp.warnings.join("\n")}\n\nAdding anyway...`);
-      }
+      try {
+        // Step 1: Honeypot check (with timeout protection)
+        let hpWarnings = [];
+        try {
+          const hp = await checkHoneypot(chain, address);
+          hpWarnings = hp.warnings;
+        } catch (e) {
+          hpWarnings = [`Honeypot check failed: ${e.message}`];
+        }
 
-      // Add to arbitrage strategy
-      if (this.strategies.arbitrage) {
-        const result = await this.strategies.arbitrage.addToken(address);
-        ctx.reply(result.success ? `✅ ${result.message}` : `⚠️ ${result.message}`);
-      }
+        if (hpWarnings.length > 0) {
+          await ctx.reply(`⚠️ Warnings:\n${hpWarnings.join("\n")}`);
+        }
 
-      // Add to sandwich targets
-      if (this.strategies.sandwich) {
-        this.strategies.sandwich.addToken(address);
-      }
+        // Step 2: Add to arbitrage (scans pools inside)
+        let addResult = { success: false, message: "No arbitrage strategy active" };
+        if (this.strategies.arbitrage) {
+          addResult = await this.strategies.arbitrage.addToken(address);
+        }
 
-      // Persist to disk
-      if (this.persistence.persistToken) {
-        this.persistence.persistToken(address, this.settings.activeChain);
+        // Step 3: Add to sandwich targets
+        if (this.strategies.sandwich) {
+          this.strategies.sandwich.addToken(address);
+        }
+
+        // Step 4: Persist
+        if (this.persistence.persistToken) {
+          this.persistence.persistToken(address, chain);
+        }
+
+        // Step 5: Final result
+        await ctx.reply(
+          `${addResult.success ? "✅" : "❌"} ${addResult.message}\n\n` +
+          `Chain: ${chain}\n` +
+          `Sandwich: ${this.strategies.sandwich ? "✅ tracking" : "❌ not available on this chain"}`
+        );
+
+      } catch (e) {
+        await ctx.reply(`❌ Error adding token: ${e.message}`);
       }
     });
 
